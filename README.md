@@ -1,7 +1,3 @@
-# Crab Current Math
-
-An educational physics-style web game built with Vite and a custom canvas simulation for practicing addition and subtraction through direct manipulation.
-
 ## Run locally
 
 ```bash
@@ -42,6 +38,11 @@ Water now uses a grid-based cellular flow model (gravity + sideways spread + dia
 - **Reduced cognitive load**: operation pockets are clearly color-coded with large numeric labels.
 - **Consistency**: same controls and visual language across all levels.
 - **Accessibility**: large controls, high-contrast text, browser-based interaction.
+- **User control and freedom**: players can choose routes, restart instantly, and switch dig modes at any time.
+- **Error prevention**: finite water and capacity limits discourage unsafe routing and reward careful planning before committing.
+- **Recognition over recall**: labels, color cues, and always-visible metrics reduce the need to remember hidden values.
+- **Learnability / progressive challenge**: level progression ramps from simple to multi-step planning, supporting skill building.
+- **Clear affordances and signifiers**: distinct pocket styling and button labels communicate what is interactive and what each action does.
 
 ## Level progression
 
