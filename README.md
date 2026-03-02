@@ -19,7 +19,7 @@ Then open the local URL shown in terminal (usually `http://localhost:5173`).
   - exact value match (`Current === Target`)
   - safe flow (`Goal Flow <= Capacity`)
 
-Water now uses a grid-based cellular flow model (gravity + sideways spread + diagonal settling) so it behaves closer to sand/water puzzle games.
+Water now uses a grid-based cellular flow model (gravity + sideways spread + diagonal settling), so it behaves closer to sand/water puzzle games.
 
 ## Controls
 
@@ -35,12 +35,12 @@ Water now uses a grid-based cellular flow model (gravity + sideways spread + dia
 - **Direct manipulation**: hold and dig tunnels in the world itself.
 - **Immediate feedback**: live HUD, operation status text, and dynamic flow counts.
 - **Visibility of system state**: always-visible Current, Target, Capacity, Goal Flow, Digs, Time.
-- **Reduced cognitive load**: operation pockets are clearly color-coded with large numeric labels.
+- **Reduced cognitive load**: operation pockets are clearly colour-coded with large numeric labels.
 - **Consistency**: same controls and visual language across all levels.
 - **Accessibility**: large controls, high-contrast text, browser-based interaction.
 - **User control and freedom**: players can choose routes, restart instantly, and switch dig modes at any time.
 - **Error prevention**: finite water and capacity limits discourage unsafe routing and reward careful planning before committing.
-- **Recognition over recall**: labels, color cues, and always-visible metrics reduce the need to remember hidden values.
+- **Recognition over recall**: labels, colour cues, and always-visible metrics reduce the need to remember hidden values.
 - **Learnability / progressive challenge**: level progression ramps from simple to multi-step planning, supporting skill building.
 - **Clear affordances and signifiers**: distinct pocket styling and button labels communicate what is interactive and what each action does.
 
