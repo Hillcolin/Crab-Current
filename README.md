@@ -5,6 +5,13 @@ npm install
 npm run dev
 ```
 
+For production build/run:
+```bash
+npm install
+npm run build
+npm run preview
+```
+
 Then open the local URL shown in terminal (usually `http://localhost:5173`).
 
 ## Core gameplay
