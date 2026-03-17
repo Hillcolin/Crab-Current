@@ -11,6 +11,9 @@ const FLOW_PACKET = 10
 const MIN_SPLIT_AMOUNT = 0.11
 const MERGE_MIN = 0.01
 const MERGE_MAX = 0.24
+const FIRE_COLS = 4
+const FIRE_ROWS = 2
+const FIRE_TOTAL_FRAMES = 8
 
 const levels = [
   {
@@ -282,13 +285,32 @@ const state = {
   frameHandle: null,
   lastFrameAt: performance.now(),
   waterGrid: new Float32Array(GRID_SIZE),
+  prevWaterGrid: new Float32Array(GRID_SIZE),
   solidMask: new Uint8Array(GRID_SIZE),
   poolLeft: 0,
   goalFlowBuffer: 0,
   firstGoalAt: null,
   lastGoalFlowAt: null,
   earnedStars: 0,
+  bottleFillDisplay: 0,   // what is currently shown (animated)
+  bottleFillTarget: 0,    // where it should go (based on math)
+  showBottleUI: false,
+  isFillingBottle: false,
 }
+
+const evaporationParticles = []
+
+const fireSprite = new Image()
+fireSprite.src = '/fire.png'
+
+const smallRockSprite = new Image()
+smallRockSprite.src = '/small_rock.png'
+
+const longRockSprite = new Image()
+longRockSprite.src = '/long_rock.png'
+
+const bottleSprite = new Image()
+bottleSprite.src = '/waterbottle.png'
 
 function idxOf(x, y) {
   return y * GRID_W + x
@@ -342,7 +364,7 @@ function clearTerrainMask(level) {
   }
 
   carveCircle(level.source.x, level.source.y, level.source.radius + 40)
-  carveCircle(level.goal.x, level.goal.y, level.goal.radius)
+  // carveCircle(level.goal.x, level.goal.y, level.goal.radius)
   level.pockets.forEach((pocket) => carveCircle(pocket.x, pocket.y, pocket.radius))
 
   state.terrainImageData = terrainCtx.getImageData(0, 0, WIDTH, HEIGHT)
@@ -447,14 +469,35 @@ function resolveRound(reason) {
 }
 
 function handlePocketActivation(pocket) {
-  if (state.activeOperations.has(pocket.id)) {
-    return
-  }
+  if (state.activeOperations.has(pocket.id)) return
 
   state.activeOperations.add(pocket.id)
+
+  // FIRE POCKET
+  if (pocket.delta < 0) {
+    spawnEvaporation(pocket.x, pocket.y)
+
+    pocket.fireState = 'coal'
+  }
+
   state.currentValue += pocket.delta
+
+  state.bottleFillTarget = state.currentValue / levels[state.currentLevelIndex].targetValue
+
   const prefix = pocket.delta > 0 ? '+' : ''
   setFeedback(`Applied ${prefix}${pocket.delta}. Current value is now ${state.currentValue}.`)
+}
+
+function spawnEvaporation(x, y) {
+  for (let i = 0; i < 18; i++) {
+    evaporationParticles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: -Math.random() * 2.5,
+      life: 40 + Math.random() * 20,
+    })
+  }
 }
 
 function seedInitialPool(level) {
@@ -495,6 +538,26 @@ function seedInitialPool(level) {
   }
 
   state.poolLeft = remaining + sourceCells.reduce((sum, index) => sum + state.waterGrid[index], 0)
+}
+
+function seedPositivePockets(level) {
+
+  for (const pocket of level.pockets) {
+
+    if (pocket.delta <= 0) continue
+
+    const waterPerCell = (pocket.delta * 15) / pocket.cells.length
+
+    for (const index of pocket.cells) {
+
+      if (state.solidMask[index]) continue
+
+      state.waterGrid[index] += waterPerCell
+
+    }
+
+  }
+
 }
 
 function fluidStep() {
@@ -539,6 +602,11 @@ function fluidStep() {
 
   if (drainedThisStep > 0) {
     state.hasConnectedToGoal = true
+
+    // turn ON bottle UI ONLY when water actually arrives
+    state.showBottleUI = true
+    state.isFillingBottle = true
+
     if (!state.firstGoalAt) {
       state.firstGoalAt = performance.now()
     }
@@ -689,6 +757,69 @@ function mergeDroplets() {
   }
 }
 
+function pocketTriggeredByFlow(gx, gy, pocket) {
+  const neighbors = [
+    idxOf(gx - 1, gy),
+    idxOf(gx + 1, gy),
+    idxOf(gx, gy - 1),
+    idxOf(gx, gy + 1),
+  ]
+
+  for (const n of neighbors) {
+    if (state.waterGrid[n] > 0.12) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function checkPocketTouches(level) {
+
+  for (const pocket of level.pockets) {
+
+    if (state.activeOperations.has(pocket.id)) continue
+    if (pocket.waitingForExternalFlow) continue
+
+    for (const index of pocket.edgeCells) {
+
+      const prev = state.prevWaterGrid[index]
+      const now = state.waterGrid[index]
+
+      if (prev < 0.01 && now > 0.08) {
+
+        const gx = index % GRID_W
+        const gy = Math.floor(index / GRID_W)
+
+        const neighbors = [
+          idxOf(gx - 1, gy),
+          idxOf(gx + 1, gy),
+          idxOf(gx, gy - 1),
+          idxOf(gx, gy + 1),
+        ]
+
+        for (const n of neighbors) {
+
+          if (pocket.cellSet.has(n)) continue
+
+          if (state.prevWaterGrid[n] > 0.2) {
+
+            handlePocketActivation(pocket)
+            break
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
+
+}
+
+/*
 function checkPocketTouches(level) {
   for (const pocket of level.pockets) {
     if (state.activeOperations.has(pocket.id)) {
@@ -706,15 +837,36 @@ function checkPocketTouches(level) {
         const x = gx * FLUID_CELL + FLUID_CELL * 0.5
         const y = gy * FLUID_CELL + FLUID_CELL * 0.5
         const index = idxOf(gx, gy)
-        if (state.waterGrid[index] > 0.08 && circleContains(x, y, pocket)) {
-          handlePocketActivation(pocket)
-          triggered = true
-          break
+        if (circleContains(x, y, pocket)) {
+
+          const amount = state.waterGrid[index]
+
+          // ignore the initial seeded pocket water
+          if (pocket.waitingForExternalFlow) {
+
+            if (amount > 1.45) { // higher than the seeded ~0.45
+              pocket.waitingForExternalFlow = false
+              handlePocketActivation(pocket)
+              triggered = true
+              break
+            } else if (pocket.delta <= 0 && amount > 0.55) {
+              pocket.waitingForExternalFlow = false
+              handlePocketActivation(pocket)
+              triggered = true
+              break
+            }
+
+          } else if (amount > 0.08) {
+
+            handlePocketActivation(pocket)
+            triggered = true
+            break
+          }
         }
       }
     }
   }
-}
+} */
 
 function updateHUD() {
   const level = levels[state.currentLevelIndex]
@@ -785,26 +937,86 @@ function drawBackground() {
 }
 
 function drawRocks(level) {
-  ;(level.rocks || []).forEach((rock) => {
+
+  for (const rock of level.rocks || []) {
+
     if (rock.type === 'circle') {
-      ctx.beginPath()
-      ctx.arc(rock.x, rock.y, rock.radius, 0, Math.PI * 2)
-      ctx.fillStyle = '#6e6d70'
-      ctx.fill()
-      ctx.lineWidth = 3
-      ctx.strokeStyle = '#4d4d52'
-      ctx.stroke()
-      return
+
+      const size = rock.radius * 2
+
+      drawImageWithWhiteOutline(
+        ctx,
+        smallRockSprite,
+        rock.x - rock.radius,
+        rock.y - rock.radius,
+        size,
+        size
+      )
+
+    } else {
+
+      drawImageWithWhiteOutline(
+        ctx,
+        longRockSprite,
+        rock.x - rock.width / 2,
+        rock.y - rock.height / 2,
+        rock.width,
+        rock.height
+      )
+
     }
 
-    ctx.beginPath()
-    ctx.roundRect(rock.x - rock.width / 2, rock.y - rock.height / 2, rock.width, rock.height, 12)
-    ctx.fillStyle = '#6e6d70'
-    ctx.fill()
-    ctx.lineWidth = 3
-    ctx.strokeStyle = '#4d4d52'
-    ctx.stroke()
-  })
+  }
+
+}
+
+function drawImageWithWhiteOutline(ctx, img, x, y, w, h) {
+  if (!img.complete || !img.naturalWidth) {
+    return
+  }
+
+  const outlineCanvas = document.createElement('canvas')
+  outlineCanvas.width = Math.ceil(w)
+  outlineCanvas.height = Math.ceil(h)
+  const octx = outlineCanvas.getContext('2d')
+
+  // draw original sprite shape
+  octx.clearRect(0, 0, outlineCanvas.width, outlineCanvas.height)
+  octx.drawImage(img, 0, 0, w, h)
+
+  // replace visible pixels with solid white
+  octx.globalCompositeOperation = 'source-in'
+  octx.fillStyle = '#ffffff'
+  octx.fillRect(0, 0, outlineCanvas.width, outlineCanvas.height)
+  octx.globalCompositeOperation = 'source-over'
+
+  const offsets = [
+    [-2, 0], [2, 0], [0, -2], [0, 2],
+    [-2, -2], [2, -2], [-2, 2], [2, 2],
+  ]
+
+  // draw white outline copies
+  for (const [ox, oy] of offsets) {
+    ctx.drawImage(outlineCanvas, x + ox, y + oy, w, h)
+  }
+
+  // draw actual rock on top
+  ctx.drawImage(img, x, y, w, h)
+}
+
+function updateEvaporation() {
+  for (let i = evaporationParticles.length - 1; i >= 0; i--) {
+    const p = evaporationParticles[i]
+
+    p.x += p.vx
+    p.y += p.vy
+    p.vy -= 0.02
+    p.life -= 1
+
+    if (p.life <= 0) {
+      evaporationParticles.splice(i, 1)
+    }
+  }
 }
 
 function drawWater() {
@@ -886,6 +1098,21 @@ function drawWater() {
   ctx.restore()
 }
 
+function drawEvaporation() {
+  ctx.save()
+
+  for (const p of evaporationParticles) {
+    ctx.globalAlpha = p.life / 60
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, 2.4, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  ctx.globalAlpha = 1
+  ctx.restore()
+}
+
 function drawTerrain(level) {
   ctx.drawImage(terrainCanvas, 0, 0)
 
@@ -904,14 +1131,47 @@ function drawTerrain(level) {
 
     ctx.beginPath()
     ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2)
-    ctx.fillStyle = active
-      ? 'rgba(84, 230, 120, 0.34)'
-      : isMinus
-        ? 'rgba(255, 199, 140, 0.34)'
-        : 'rgba(123, 210, 255, 0.34)'
+
+    if (isMinus) {
+
+      if (pocket.fireState === 'burning') {
+
+        const frame = Math.floor(pocket.fireFrame)
+
+        const frameWidth = fireSprite.width / FIRE_COLS
+        const frameHeight = fireSprite.height / FIRE_ROWS
+
+        const col = frame % FIRE_COLS
+        const row = Math.floor(frame / FIRE_COLS)
+
+        ctx.drawImage(
+          fireSprite,
+          col * frameWidth,
+          row * frameHeight,
+          frameWidth,
+          frameHeight,
+          pocket.x - pocket.radius,
+          pocket.y - pocket.radius,
+          pocket.radius * 2,
+          pocket.radius * 2
+        )
+
+      }
+
+      if (pocket.fireState === 'coal') {
+        ctx.fillStyle = '#2a2a2a'
+      }
+
+    } else {
+      ctx.fillStyle = active
+        ? 'rgba(84,230,120,0.34)'
+        : 'rgba(123,210,255,0.34)'
+    }
+
     ctx.fill()
+
     ctx.lineWidth = 4
-    ctx.strokeStyle = isMinus ? '#f18937' : '#2f9ee2'
+    ctx.strokeStyle = isMinus ? '#ff6b00' : '#2f9ee2'
     ctx.stroke()
   })
 
@@ -923,6 +1183,7 @@ function drawTerrain(level) {
   ctx.strokeStyle = '#1f85cb'
   ctx.stroke()
 
+  /*
   ctx.beginPath()
   ctx.arc(level.goal.x, level.goal.y, level.goal.radius, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(126, 236, 165, 0.3)'
@@ -930,6 +1191,17 @@ function drawTerrain(level) {
   ctx.lineWidth = 4
   ctx.strokeStyle = state.hasConnectedToGoal ? '#1a9b4f' : '#2aa862'
   ctx.stroke()
+  */
+
+  const bottleW = level.goal.radius * 2.5
+  const bottleH = level.goal.radius * 2.4
+
+  const bottleX = level.goal.x - bottleW / 3.5
+  const bottleY = level.goal.y - bottleH / 2
+
+  if (bottleSprite.complete) {
+    ctx.drawImage(bottleSprite, bottleX, bottleY, bottleW, bottleH)
+  }
 }
 
 function drawOverlay() {
@@ -942,21 +1214,32 @@ function drawOverlay() {
 
   level.pockets.forEach((pocket) => {
     const active = state.activeOperations.has(pocket.id)
+    const isMinus = pocket.delta < 0
+
     ctx.beginPath()
     ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2)
-    ctx.fillStyle = active ? 'rgba(68, 219, 119, 0.28)' : 'rgba(255, 255, 255, 0.16)'
+
+    if (!isMinus && active) {
+      ctx.fillStyle = 'rgba(68, 219, 119, 0.28)' // green only for positive
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0)'
+    }
+
     ctx.fill()
 
     ctx.font = '900 28px "Trebuchet MS", Arial, sans-serif'
-    ctx.fillStyle = pocket.delta < 0 ? '#d35f00' : '#006cbc'
+    ctx.fillStyle = pocket.delta < 0 ? (pocket.fireState == 'burning' ? '#7a3700ff' : '#ff7300ff') : '#003f70ff'
     const text = pocket.delta > 0 ? `+${pocket.delta}` : `${pocket.delta}`
     ctx.fillText(text, pocket.x - 20, pocket.y + 10)
   })
 
+  /*
   ctx.beginPath()
   ctx.arc(level.goal.x, level.goal.y, level.goal.radius - 12, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(255, 255, 255, 0.58)'
   ctx.fill()
+  */
+
   ctx.font = '900 34px "Trebuchet MS", Arial, sans-serif'
   ctx.fillStyle = '#1e6d44'
   const targetText = String(level.targetValue)
@@ -968,6 +1251,37 @@ function drawOverlay() {
   const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀💨'
   ctx.font = '34px Arial'
   ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
+
+  const bottleW = level.goal.radius * 1.6
+  const bottleH = level.goal.radius * 2.4
+
+  const bottleX = level.goal.x - bottleW / 2
+  const bottleY = level.goal.y - bottleH / 2
+
+  // fill amount
+  if (state.showBottleUI) {
+    const fillRatio = state.bottleFillDisplay
+    const fillHeight = bottleH * fillRatio
+
+    ctx.fillStyle = 'rgba(50, 170, 255, 0.6)'
+
+    ctx.fillRect(
+      bottleX + bottleW * 0.15,
+      bottleY + bottleH - fillHeight,
+      bottleW * 0.7,
+      fillHeight
+    )
+
+    const targetRatio = state.bottleFillTarget
+    const targetY = bottleY + 23
+
+    ctx.strokeStyle = '#ff3b3b'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(bottleX + bottleW * 0.1, targetY)
+    ctx.lineTo(bottleX + bottleW * 0.9, targetY)
+    ctx.stroke()
+  }
 
   ctx.restore()
 }
@@ -1036,11 +1350,69 @@ function loadLevel(levelIndex) {
   state.firstGoalAt = null
   state.lastGoalFlowAt = null
   state.earnedStars = 0
+  state.showBottleUI = false
+  state.isFillingBottle = false
+  state.bottleFillDisplay = 0
+  state.bottleFillTarget = 0
+
+  for (const pocket of level.pockets) {
+
+    pocket.waitingForExternalFlow = true
+    pocket.cells = []
+
+    const minX = Math.max(1, Math.floor((pocket.x - pocket.radius) / FLUID_CELL))
+    const maxX = Math.min(GRID_W - 2, Math.ceil((pocket.x + pocket.radius) / FLUID_CELL))
+    const minY = Math.max(1, Math.floor((pocket.y - pocket.radius) / FLUID_CELL))
+    const maxY = Math.min(GRID_H - 2, Math.ceil((pocket.y + pocket.radius) / FLUID_CELL))
+
+    for (let gy = minY; gy <= maxY; gy++) {
+      for (let gx = minX; gx <= maxX; gx++) {
+
+        const x = gx * FLUID_CELL + FLUID_CELL * 0.5
+        const y = gy * FLUID_CELL + FLUID_CELL * 0.5
+
+        if (circleContains(x, y, pocket)) {
+          pocket.cells.push(idxOf(gx, gy))
+        }
+
+      }
+    }
+
+    pocket.cellSet = new Set(pocket.cells)
+
+    pocket.edgeCells = pocket.cells.filter((index) => {
+      const gx = index % GRID_W
+      const gy = Math.floor(index / GRID_W)
+
+      const neighbors = [
+        idxOf(gx - 1, gy),
+        idxOf(gx + 1, gy),
+        idxOf(gx, gy - 1),
+        idxOf(gx, gy + 1),
+      ]
+
+      // keep only boundary cells (touching outside)
+      return neighbors.some((n) => !pocket.cellSet.has(n))
+    })
+
+    if (pocket.delta < 0) {
+      pocket.fireState = 'burning'
+      pocket.fireFrame = 0
+    }
+
+  }
+
+  setTimeout(() => {
+    for (const pocket of level.pockets) {
+      pocket.waitingForExternalFlow = false
+    }
+  }, 200)
 
   setStars(0)
   hideEndModal()
   clearTerrainMask(level)
   seedInitialPool(level)
+  seedPositivePockets(level)
   updateHUD()
 
   setStatus('Finite pool loaded. Dig a route before your water runs out.')
@@ -1048,6 +1420,8 @@ function loadLevel(levelIndex) {
 }
 
 function updateFluidAndResolve() {
+  state.prevWaterGrid.set(state.waterGrid)
+
   if (state.hasResolvedRound) {
     return
   }
@@ -1077,15 +1451,42 @@ function updateFluidAndResolve() {
   }
 }
 
+function updateFire(level) {
+
+  for (const pocket of level.pockets) {
+
+    if (pocket.delta < 0 && pocket.fireState === 'burning') {
+
+      pocket.fireFrame += 0.15
+
+      if (pocket.fireFrame >= FIRE_TOTAL_FRAMES) {
+        pocket.fireFrame = 0
+      }
+
+    }
+
+  }
+
+}
+
 function tick(now) {
   state.lastFrameAt = now
 
   updateFluidAndResolve()
+  updateEvaporation()
   updateHUD()
+  updateFire(levels[state.currentLevelIndex])
+
+  // smooth animation toward target
+  if (state.isFillingBottle) {
+    const speed = 0.02
+    state.bottleFillDisplay += (state.bottleFillTarget - state.bottleFillDisplay - 0.2) * speed
+  }
 
   drawBackground()
   drawTerrain(levels[state.currentLevelIndex])
   drawWater()
+  drawEvaporation()
   drawOverlay()
 
   state.frameHandle = requestAnimationFrame(tick)

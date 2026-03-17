@@ -171,7 +171,8 @@ select:focus-visible {
 }
 
 .play-canvas {
-  cursor: crosshair;
+  /* cursor: crosshair; */
+  cursor: url('/shovel.png') 0 32, auto;
 }
 
 .legend {
