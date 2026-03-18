@@ -210,6 +210,9 @@ app.innerHTML = `
     <section id="endModal" class="end-modal hidden" aria-live="polite" aria-label="Level result">
       <div class="end-card">
         <h2 id="endTitle">Level complete!</h2>
+
+        <img id="endImage" class="end-image" alt="Result image" />
+
         <p id="endMessage">You reached the goal.</p>
         <div id="endStars" class="end-stars">☆ ☆ ☆</div>
         <div class="end-actions">
@@ -244,6 +247,7 @@ const endMessageEl = document.querySelector('#endMessage')
 const endStarsEl = document.querySelector('#endStars')
 const retryBtn = document.querySelector('#retryBtn')
 const modalNextBtn = document.querySelector('#modalNextBtn')
+const endImageEl = document.querySelector('#endImage')
 
 levels.forEach((level, index) => {
   const option = document.createElement('option')
@@ -401,7 +405,7 @@ function setStars(starCount) {
   starTextEl.textContent = stars.join(' ')
 }
 
-function showEndModal(title, message, stars, showNext) {
+function showEndModal(title, message, stars, showNext, imageSrc) {
   const view = ['☆', '☆', '☆']
   for (let index = 0; index < stars; index += 1) {
     view[index] = '★'
@@ -412,6 +416,7 @@ function showEndModal(title, message, stars, showNext) {
   endStarsEl.textContent = view.join(' ')
   modalNextBtn.disabled = !showNext
   endModalEl.classList.remove('hidden')
+  endImageEl.src = imageSrc
 }
 
 function hideEndModal() {
@@ -446,7 +451,7 @@ function resolveRound(reason) {
     setFeedback('Crab outcome: blown away 🌊🦀')
     state.earnedStars = 0
     setStars(0)
-    showEndModal('Level failed', 'Too much water pressure burst the pipe.', 0, false)
+    showEndModal('Level failed', 'Too much water overflowed the water bottle.', 0, false, '/too_much.png')
     return
   }
 
@@ -456,16 +461,16 @@ function resolveRound(reason) {
     setFeedback('Crab outcome: disappointed by a trickle 😞')
     state.earnedStars = 0
     setStars(0)
-    showEndModal('Level failed', 'Not enough value reached the goal pipe.', 0, false)
+    showEndModal('Level failed', 'Not enough water to fill the bottle.', 0, false, '/no_water.png')
     return
   }
 
   state.crabState = 'happy'
-  setStatus('Perfect match! The crab is happy and the pipe holds.')
+  setStatus('Perfect match! The crab is happy and the water bottle is filled.')
   setFeedback('Exact arithmetic achieved ✅')
   state.earnedStars = computeStars(level)
   setStars(state.earnedStars)
-  showEndModal('Level complete!', `You hit the target value ${level.targetValue}.`, state.earnedStars, true)
+  showEndModal('Level complete!', `You hit the target value ${level.targetValue}.`, state.earnedStars, true, '/perfect_amount.png')
 }
 
 function handlePocketActivation(pocket) {
@@ -802,7 +807,7 @@ function checkPocketTouches(level) {
 
           if (pocket.cellSet.has(n)) continue
 
-          if (state.prevWaterGrid[n] > 0.2) {
+          if (state.prevWaterGrid[n] > 0.15) {
 
             handlePocketActivation(pocket)
             break
@@ -818,55 +823,6 @@ function checkPocketTouches(level) {
   }
 
 }
-
-/*
-function checkPocketTouches(level) {
-  for (const pocket of level.pockets) {
-    if (state.activeOperations.has(pocket.id)) {
-      continue
-    }
-
-    const minX = Math.max(1, Math.floor((pocket.x - pocket.radius) / FLUID_CELL))
-    const maxX = Math.min(GRID_W - 2, Math.ceil((pocket.x + pocket.radius) / FLUID_CELL))
-    const minY = Math.max(1, Math.floor((pocket.y - pocket.radius) / FLUID_CELL))
-    const maxY = Math.min(GRID_H - 2, Math.ceil((pocket.y + pocket.radius) / FLUID_CELL))
-
-    let triggered = false
-    for (let gy = minY; gy <= maxY && !triggered; gy += 1) {
-      for (let gx = minX; gx <= maxX; gx += 1) {
-        const x = gx * FLUID_CELL + FLUID_CELL * 0.5
-        const y = gy * FLUID_CELL + FLUID_CELL * 0.5
-        const index = idxOf(gx, gy)
-        if (circleContains(x, y, pocket)) {
-
-          const amount = state.waterGrid[index]
-
-          // ignore the initial seeded pocket water
-          if (pocket.waitingForExternalFlow) {
-
-            if (amount > 1.45) { // higher than the seeded ~0.45
-              pocket.waitingForExternalFlow = false
-              handlePocketActivation(pocket)
-              triggered = true
-              break
-            } else if (pocket.delta <= 0 && amount > 0.55) {
-              pocket.waitingForExternalFlow = false
-              handlePocketActivation(pocket)
-              triggered = true
-              break
-            }
-
-          } else if (amount > 0.08) {
-
-            handlePocketActivation(pocket)
-            triggered = true
-            break
-          }
-        }
-      }
-    }
-  }
-} */
 
 function updateHUD() {
   const level = levels[state.currentLevelIndex]
@@ -1246,10 +1202,10 @@ function drawOverlay() {
   const textWidth = ctx.measureText(targetText).width
   ctx.fillText(targetText, level.goal.x - textWidth / 2, level.goal.y + 12)
 
-  const crabOffset = state.crabState === 'blown' ? 60 : 0
-  const crabY = state.crabState === 'sad' ? level.goal.y + 64 : level.goal.y + 60
-  const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀💨'
-  ctx.font = '34px Arial'
+  const crabOffset = 64
+  const crabY = state.crabState === 'sad' ? level.goal.y + 32 : level.goal.y + 32
+  const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀🌊'
+  ctx.font = '3vw Arial'
   ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
 
   const bottleW = level.goal.radius * 1.6
@@ -1272,16 +1228,32 @@ function drawOverlay() {
       fillHeight
     )
 
-    const targetRatio = state.bottleFillTarget
-    const targetY = bottleY + 23
+      if (fillRatio >= 1 - 0.2) {
+        // glowing warning
+        ctx.fillStyle = 'rgba(255, 60, 60, 0.25)'
+        ctx.fillRect(bottleX, bottleY, bottleW, bottleH)
 
-    ctx.strokeStyle = '#ff3b3b'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(bottleX + bottleW * 0.1, targetY)
-    ctx.lineTo(bottleX + bottleW * 0.9, targetY)
-    ctx.stroke()
+        // overflow spill (top)
+        //ctx.fillStyle = 'rgba(50, 170, 255, 0.5)'
+
+        ctx.fillRect(
+          bottleX + bottleW * 0.2,
+          bottleY - 8,
+          bottleW * 0.6,
+          8
+        )
+      }
   }
+
+  const targetRatio = state.bottleFillTarget
+  const targetY = bottleY + 23
+
+  ctx.strokeStyle = '#ff3b3b'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(bottleX + bottleW * 0.1, targetY)
+  ctx.lineTo(bottleX + bottleW * 0.9, targetY)
+  ctx.stroke()
 
   ctx.restore()
 }
