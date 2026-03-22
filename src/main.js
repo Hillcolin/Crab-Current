@@ -1,12 +1,15 @@
 import './style.css'
 
-const WIDTH = 940
-const HEIGHT = 620
-const TERRAIN_TOP = 132
+const BASE_WIDTH = 1140
+const BASE_HEIGHT = 760
+const BASE_TERRAIN_TOP = 162
 const FLUID_CELL = 5
-const GRID_W = Math.floor(WIDTH / FLUID_CELL)
-const GRID_H = Math.floor(HEIGHT / FLUID_CELL)
-const GRID_SIZE = GRID_W * GRID_H
+let WIDTH = BASE_WIDTH
+let HEIGHT = BASE_HEIGHT
+let TERRAIN_TOP = BASE_TERRAIN_TOP
+let GRID_W = Math.floor(WIDTH / FLUID_CELL)
+let GRID_H = Math.floor(HEIGHT / FLUID_CELL)
+let GRID_SIZE = GRID_W * GRID_H
 const FLOW_PACKET = 10
 const MIN_SPLIT_AMOUNT = 0.11
 const MERGE_MIN = 0.01
@@ -15,7 +18,7 @@ const FIRE_COLS = 4
 const FIRE_ROWS = 2
 const FIRE_TOTAL_FRAMES = 8
 
-const levels = [
+const baseLevels = [
   {
     id: 1,
     name: 'Level 1 · Learn the combo',
@@ -175,6 +178,8 @@ const levels = [
   },
 ]
 
+const levels = []
+
 const app = document.querySelector('#app')
 app.innerHTML = `
   <main class="app-shell">
@@ -192,11 +197,6 @@ app.innerHTML = `
         <button id="nextBtn">Next level</button>
       </div>
     </header>
-
-    <section class="hud" aria-live="polite">
-      <div><strong>Current</strong><span id="currentValue">0</span></div>
-      <div><strong>Target</strong><span id="targetValue">0</span></div>
-    </section>
 
     <section class="status-row">
       <div id="statusText" class="status-chip">Carve a path from source to goal.</div>
@@ -224,7 +224,7 @@ app.innerHTML = `
 
     <footer class="legend">
       <span><b>Blue pockets</b> add water value.</span>
-      <span><b>Sponges</b> subtract water value.</span>
+      <span><b>Fire</b> subtract water value.</span>
       <span><b>Gray rocks</b> cannot be dug through.</span>
       <span><b>Goal pipe</b> needs exact value and safe flow.</span>
     </footer>
@@ -249,7 +249,7 @@ const retryBtn = document.querySelector('#retryBtn')
 const modalNextBtn = document.querySelector('#modalNextBtn')
 const endImageEl = document.querySelector('#endImage')
 
-levels.forEach((level, index) => {
+baseLevels.forEach((level, index) => {
   const option = document.createElement('option')
   option.value = index
   option.textContent = level.name
@@ -260,19 +260,20 @@ const canvas = document.createElement('canvas')
 canvas.width = WIDTH
 canvas.height = HEIGHT
 canvas.className = 'play-canvas'
+canvas.setAttribute('aria-label', 'Crab Current game canvas')
 stageEl.replaceChildren(canvas)
-const ctx = canvas.getContext('2d')
+let ctx = canvas.getContext('2d')
 
 const terrainCanvas = document.createElement('canvas')
 terrainCanvas.width = WIDTH
 terrainCanvas.height = HEIGHT
-const terrainCtx = terrainCanvas.getContext('2d')
+let terrainCtx = terrainCanvas.getContext('2d')
 
 const waterFieldCanvas = document.createElement('canvas')
 waterFieldCanvas.width = GRID_W
 waterFieldCanvas.height = GRID_H
-const waterFieldCtx = waterFieldCanvas.getContext('2d', { willReadFrequently: true })
-const waterFieldImage = waterFieldCtx.createImageData(GRID_W, GRID_H)
+let waterFieldCtx = waterFieldCanvas.getContext('2d', { willReadFrequently: true })
+let waterFieldImage = waterFieldCtx.createImageData(GRID_W, GRID_H)
 
 const state = {
   currentLevelIndex: 0,
@@ -300,6 +301,9 @@ const state = {
   bottleFillTarget: 0,    // where it should go (based on math)
   showBottleUI: false,
   isFillingBottle: false,
+  displayCurrentValue: 0, // smoothed current value for in-game bubble
+  resultMessage: '',
+  resultColor: '#007e7a',
 }
 
 const evaporationParticles = []
@@ -315,6 +319,102 @@ longRockSprite.src = '/long_rock.png'
 
 const bottleSprite = new Image()
 bottleSprite.src = '/waterbottle.png'
+
+function cloneLevelForWorld(level, scaleX, scaleY, radiusScale) {
+  return {
+    ...level,
+    source: {
+      x: level.source.x * scaleX,
+      y: level.source.y * scaleY,
+      radius: level.source.radius * radiusScale,
+    },
+    goal: {
+      x: level.goal.x * scaleX,
+      y: level.goal.y * scaleY,
+      radius: level.goal.radius * radiusScale,
+    },
+    pockets: level.pockets.map((pocket) => ({
+      ...pocket,
+      x: pocket.x * scaleX,
+      y: pocket.y * scaleY,
+      radius: pocket.radius * radiusScale,
+    })),
+    rocks: (level.rocks || []).map((rock) =>
+      rock.type === 'circle'
+        ? {
+            ...rock,
+            x: rock.x * scaleX,
+            y: rock.y * scaleY,
+            radius: rock.radius * radiusScale,
+          }
+        : {
+            ...rock,
+            x: rock.x * scaleX,
+            y: rock.y * scaleY,
+            width: rock.width * scaleX,
+            height: rock.height * scaleY,
+          }
+    ),
+  }
+}
+
+function getStageInnerSize() {
+  const rect = stageEl.getBoundingClientRect()
+  const style = window.getComputedStyle(stageEl)
+  const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+  const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+  const availableWidth = Math.max(320, Math.floor(rect.width - horizontalPadding))
+  const availableHeight = Math.max(240, Math.floor(rect.height - verticalPadding))
+  const baseAspect = BASE_WIDTH / BASE_HEIGHT
+
+  let width = availableWidth
+  let height = Math.floor(width / baseAspect)
+
+  if (height > availableHeight) {
+    height = availableHeight
+    width = Math.floor(height * baseAspect)
+  }
+
+  return {
+    width,
+    height,
+  }
+}
+
+function syncWorldGeometry() {
+  const nextSize = getStageInnerSize()
+  if (nextSize.width === WIDTH && nextSize.height === HEIGHT) {
+    return false
+  }
+
+  WIDTH = nextSize.width
+  HEIGHT = nextSize.height
+  TERRAIN_TOP = Math.round((BASE_TERRAIN_TOP / BASE_HEIGHT) * HEIGHT)
+  GRID_W = Math.floor(WIDTH / FLUID_CELL)
+  GRID_H = Math.floor(HEIGHT / FLUID_CELL)
+  GRID_SIZE = GRID_W * GRID_H
+
+  canvas.width = WIDTH
+  canvas.height = HEIGHT
+  terrainCanvas.width = WIDTH
+  terrainCanvas.height = HEIGHT
+  waterFieldCanvas.width = GRID_W
+  waterFieldCanvas.height = GRID_H
+
+  ctx = canvas.getContext('2d')
+  terrainCtx = terrainCanvas.getContext('2d')
+  waterFieldCtx = waterFieldCanvas.getContext('2d', { willReadFrequently: true })
+  waterFieldImage = waterFieldCtx.createImageData(GRID_W, GRID_H)
+
+  state.waterGrid = new Float32Array(GRID_SIZE)
+  state.prevWaterGrid = new Float32Array(GRID_SIZE)
+  state.solidMask = new Uint8Array(GRID_SIZE)
+
+  const scale = WIDTH / BASE_WIDTH
+
+  levels.splice(0, levels.length, ...baseLevels.map((level) => cloneLevelForWorld(level, scale, scale, scale)))
+  return true
+}
 
 function idxOf(x, y) {
   return y * GRID_W + x
@@ -402,7 +502,9 @@ function setStars(starCount) {
   for (let index = 0; index < starCount; index += 1) {
     stars[index] = '★'
   }
-  starTextEl.textContent = stars.join(' ')
+  if (starTextEl) {
+    starTextEl.textContent = stars.join(' ')
+  }
 }
 
 function showEndModal(title, message, stars, showNext, imageSrc) {
@@ -449,6 +551,8 @@ function resolveRound(reason) {
     state.crabState = 'blown'
     setStatus('Pipe burst! Too much pressure. Try a different operation route.')
     setFeedback('Crab outcome: blown away 🌊🦀')
+    state.resultMessage = `Burst! Got ${state.currentValue}, need ${level.targetValue}`
+    state.resultColor = '#f33d3d'
     state.earnedStars = 0
     setStars(0)
     showEndModal('Level failed', 'Too much water overflowed the water bottle.', 0, false, '/too_much.png')
@@ -459,6 +563,8 @@ function resolveRound(reason) {
     state.crabState = 'sad'
     setStatus('Not enough water value reached the pipe.')
     setFeedback('Crab outcome: disappointed by a trickle 😞')
+    state.resultMessage = `Got ${state.currentValue}, need ${level.targetValue}`
+    state.resultColor = '#f59f00'
     state.earnedStars = 0
     setStars(0)
     showEndModal('Level failed', 'Not enough water to fill the bottle.', 0, false, '/no_water.png')
@@ -468,6 +574,8 @@ function resolveRound(reason) {
   state.crabState = 'happy'
   setStatus('Perfect match! The crab is happy and the water bottle is filled.')
   setFeedback('Exact arithmetic achieved ✅')
+  state.resultMessage = `Perfect! ${state.currentValue} = ${level.targetValue}`
+  state.resultColor = '#2f9c52'
   state.earnedStars = computeStars(level)
   setStars(state.earnedStars)
   showEndModal('Level complete!', `You hit the target value ${level.targetValue}.`, state.earnedStars, true, '/perfect_amount.png')
@@ -826,8 +934,8 @@ function checkPocketTouches(level) {
 
 function updateHUD() {
   const level = levels[state.currentLevelIndex]
-  currentValueEl.textContent = String(state.currentValue)
-  targetValueEl.textContent = String(level.targetValue)
+  if (currentValueEl) currentValueEl.textContent = String(state.currentValue)
+  if (targetValueEl) targetValueEl.textContent = String(level.targetValue)
 }
 
 function drawBackground() {
@@ -1164,10 +1272,60 @@ function drawOverlay() {
   const level = levels[state.currentLevelIndex]
   ctx.save()
 
-  ctx.font = '700 20px "Trebuchet MS", Arial, sans-serif'
-  ctx.fillStyle = '#0f3e5f'
-  ctx.fillText(`Start ${level.startValue}`, level.source.x - 42, level.source.y - level.source.radius - 14)
+  // Source (current value) bubble
+  const currentBubbleRadius = level.source.radius - 8
+  ctx.beginPath()
+  ctx.arc(level.source.x, level.source.y, currentBubbleRadius, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+  ctx.fill()
+  ctx.lineWidth = 4
+  ctx.strokeStyle = 'rgba(14, 92, 164, 0.85)'
+  ctx.stroke()
 
+  const currentValueInt = Math.round(state.displayCurrentValue)
+  ctx.font = '900 32px "Trebuchet MS", Arial, sans-serif'
+  ctx.fillStyle = '#003c73'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(`${currentValueInt}`, level.source.x, level.source.y)
+
+  ctx.font = '600 18px "Trebuchet MS", Arial, sans-serif'
+  ctx.fillStyle = '#0f4f78'
+  ctx.fillText('Current', level.source.x, level.source.y + currentBubbleRadius + 22)
+
+  // Goal offer and target
+  const now = performance.now()
+  const swing = (Math.sin(now * 0.005) + 1) * 0.5
+  const haloSize = level.goal.radius * (1.2 + 0.12 * swing)
+
+  ctx.beginPath()
+  ctx.arc(level.goal.x, level.goal.y, haloSize, 0, Math.PI * 2)
+  ctx.strokeStyle = `rgba(22, 155, 84, ${0.26 + 0.22 * swing})`
+  ctx.lineWidth = 4
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(level.goal.x, level.goal.y, level.goal.radius + 10, 0, Math.PI * 2)
+  ctx.strokeStyle = `rgba(255, 206, 66, ${0.3 + 0.24 * swing})`
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(19, 85, 38, 0.42)'
+  ctx.beginPath()
+  ctx.arc(level.goal.x, level.goal.y, level.goal.radius + 4, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.font = '800 28px "Trebuchet MS", Arial, sans-serif'
+  ctx.fillStyle = '#053535'
+  ctx.fillText(`Goal: ${level.targetValue}`, level.goal.x, level.goal.y + 8)
+
+  if (state.resultMessage) {
+    ctx.font = '700 20px "Trebuchet MS", Arial, sans-serif'
+    ctx.fillStyle = state.resultColor
+    ctx.fillText(state.resultMessage, level.goal.x, level.goal.y - level.goal.radius - 17)
+  }
+
+  // Pocket labels and deltas
   level.pockets.forEach((pocket) => {
     const active = state.activeOperations.has(pocket.id)
     const isMinus = pocket.delta < 0
@@ -1176,7 +1334,7 @@ function drawOverlay() {
     ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2)
 
     if (!isMinus && active) {
-      ctx.fillStyle = 'rgba(68, 219, 119, 0.28)' // green only for positive
+      ctx.fillStyle = 'rgba(68, 219, 119, 0.28)'
     } else {
       ctx.fillStyle = 'rgba(255, 255, 255, 0)'
     }
@@ -1186,68 +1344,33 @@ function drawOverlay() {
     ctx.font = '900 28px "Trebuchet MS", Arial, sans-serif'
     ctx.fillStyle = pocket.delta < 0 ? (pocket.fireState == 'burning' ? '#7a3700ff' : '#ff7300ff') : '#003f70ff'
     const text = pocket.delta > 0 ? `+${pocket.delta}` : `${pocket.delta}`
-    ctx.fillText(text, pocket.x - 20, pocket.y + 10)
+    ctx.fillText(text, pocket.x, pocket.y + 10)
   })
 
-  /*
-  ctx.beginPath()
-  ctx.arc(level.goal.x, level.goal.y, level.goal.radius - 12, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.58)'
-  ctx.fill()
-  */
-
-  ctx.font = '900 34px "Trebuchet MS", Arial, sans-serif'
-  ctx.fillStyle = '#1e6d44'
-  const targetText = String(level.targetValue)
-  const textWidth = ctx.measureText(targetText).width
-  ctx.fillText(targetText, level.goal.x - textWidth / 2, level.goal.y + 12)
-
-  const crabOffset = 64
-  const crabY = state.crabState === 'sad' ? level.goal.y + 32 : level.goal.y + 32
-  const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀🌊'
-  ctx.font = '3vw Arial'
-  ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
-
+  // Bottle fill indicator and level target line
   const bottleW = level.goal.radius * 1.6
   const bottleH = level.goal.radius * 2.4
 
   const bottleX = level.goal.x - bottleW / 2
   const bottleY = level.goal.y - bottleH / 2
 
-  // fill amount
   if (state.showBottleUI) {
-    const fillRatio = state.bottleFillDisplay
+    const fillRatio = Math.max(0, Math.min(1, state.bottleFillDisplay))
     const fillHeight = bottleH * fillRatio
 
     ctx.fillStyle = 'rgba(50, 170, 255, 0.6)'
+    ctx.fillRect(bottleX + bottleW * 0.15, bottleY + bottleH - fillHeight, bottleW * 0.7, fillHeight)
 
-    ctx.fillRect(
-      bottleX + bottleW * 0.15,
-      bottleY + bottleH - fillHeight,
-      bottleW * 0.7,
-      fillHeight
-    )
-
-      if (fillRatio >= 1 - 0.2) {
-        // glowing warning
-        ctx.fillStyle = 'rgba(255, 60, 60, 0.25)'
-        ctx.fillRect(bottleX, bottleY, bottleW, bottleH)
-
-        // overflow spill (top)
-        //ctx.fillStyle = 'rgba(50, 170, 255, 0.5)'
-
-        ctx.fillRect(
-          bottleX + bottleW * 0.2,
-          bottleY - 8,
-          bottleW * 0.6,
-          8
-        )
-      }
+    if (fillRatio >= 0.88) {
+      ctx.fillStyle = 'rgba(255, 60, 60, 0.22)'
+      ctx.fillRect(bottleX, bottleY, bottleW, bottleH)
+      ctx.fillStyle = 'rgba(50, 170, 255, 0.45)'
+      ctx.fillRect(bottleX + bottleW * 0.2, bottleY - 8, bottleW * 0.6, 8)
+    }
   }
 
   const targetRatio = state.bottleFillTarget
   const targetY = bottleY + 23
-
   ctx.strokeStyle = '#ff3b3b'
   ctx.lineWidth = 2
   ctx.beginPath()
@@ -1278,9 +1401,11 @@ function digAt(worldX, worldY, radius) {
 function setupDigHandlers() {
   const pointerToWorld = (event) => {
     const rect = canvas.getBoundingClientRect()
+    const scaleX = WIDTH / rect.width
+    const scaleY = HEIGHT / rect.height
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
     }
   }
 
@@ -1312,6 +1437,7 @@ function loadLevel(levelIndex) {
 
   const level = levels[levelIndex]
   state.currentValue = level.startValue
+  state.displayCurrentValue = level.startValue
   state.goalHits = 0
   state.digCount = 0
   state.hasConnectedToGoal = false
@@ -1326,6 +1452,8 @@ function loadLevel(levelIndex) {
   state.isFillingBottle = false
   state.bottleFillDisplay = 0
   state.bottleFillTarget = 0
+  state.resultMessage = ''
+  state.resultColor = '#007e7a'
 
   for (const pocket of level.pockets) {
 
@@ -1455,6 +1583,10 @@ function tick(now) {
     state.bottleFillDisplay += (state.bottleFillTarget - state.bottleFillDisplay - 0.2) * speed
   }
 
+  // smooth display of current value in the source bubble
+  const currentValueDelta = state.currentValue - state.displayCurrentValue
+  state.displayCurrentValue += currentValueDelta * 0.14
+
   drawBackground()
   drawTerrain(levels[state.currentLevelIndex])
   drawWater()
@@ -1465,8 +1597,21 @@ function tick(now) {
 }
 
 setupDigHandlers()
+syncWorldGeometry()
 loadLevel(0)
 state.frameHandle = requestAnimationFrame(tick)
+
+let resizeTimer = null
+window.addEventListener('resize', () => {
+  window.clearTimeout(resizeTimer)
+  resizeTimer = window.setTimeout(() => {
+    if (!syncWorldGeometry()) {
+      return
+    }
+
+    loadLevel(state.currentLevelIndex)
+  }, 120)
+})
 
 levelSelect.addEventListener('change', (event) => {
   const nextIndex = Number(event.target.value)
