@@ -1278,9 +1278,13 @@ function digAt(worldX, worldY, radius) {
 function setupDigHandlers() {
   const pointerToWorld = (event) => {
     const rect = canvas.getBoundingClientRect()
+  
+    const scaleX = WIDTH / rect.width
+    const scaleY = HEIGHT / rect.height 
+   
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
     }
   }
 
