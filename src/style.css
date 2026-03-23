@@ -164,10 +164,16 @@ select:focus-visible {
   border: 3px solid #85c4e7;
   overflow: hidden;
   box-shadow: 0 10px 22px #7abce051;
+  width: 100%;
+  max-width: 940px;
+  aspect-ratio: 940 / 620;
+  margin: 0 auto;
 }
 
 .stage canvas {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .play-canvas {
