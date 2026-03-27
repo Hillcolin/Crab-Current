@@ -34,7 +34,7 @@ body {
   width: min(980px, 100%);
   min-height: calc(100dvh - 24px);
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -103,37 +103,9 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
-.status-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.2fr) auto auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-chip {
-  background: #ffffffcf;
-  border: 2px solid #98d2f2;
-  border-radius: 10px;
-  padding: 9px 12px;
-  min-height: 46px;
-  display: flex;
-  align-items: center;
-  font-weight: 700;
-  color: #27556f;
-}
-
 .mode-btn {
   min-width: 180px;
   white-space: nowrap;
-}
-
-.stars {
-  min-width: 100px;
-  text-align: center;
-  font-size: 1.5rem;
-  letter-spacing: 2px;
-  color: #d09c00;
-  font-weight: 900;
 }
 
 .stage-wrap {
@@ -210,13 +182,6 @@ select:focus-visible {
   font-weight: 700;
 }
 
-.end-stars {
-  font-size: 2rem;
-  letter-spacing: 5px;
-  color: #d09c00;
-  margin-bottom: 14px;
-}
-
 .end-actions {
   display: flex;
   justify-content: center;
@@ -234,8 +199,7 @@ select:focus-visible {
     gap: 8px;
   }
 
-  .topbar,
-  .status-row {
+  .topbar {
     grid-template-columns: 1fr;
     display: grid;
     align-items: stretch;
@@ -245,7 +209,6 @@ select:focus-visible {
     gap: 8px;
   }
 
-  .status-chip,
   .mode-btn {
     min-height: 40px;
   }
@@ -265,3 +228,4 @@ select:focus-visible {
 
   object-fit: contain;
 }
+

@@ -188,17 +188,11 @@ app.innerHTML = `
           Level
           <select id="levelSelect" aria-label="Select level"></select>
         </label>
+        <button id="digModeBtn" class="mode-btn" aria-label="Toggle digging mode">Dig mode: Continuous</button>
         <button id="restartBtn">Restart level</button>
         <button id="nextBtn">Next level</button>
       </div>
     </header>
-
-    <section class="status-row">
-      <div id="statusText" class="status-chip">Carve a path from source to goal.</div>
-      <div id="opFeedback" class="status-chip">Operations trigger as water enters a pocket.</div>
-      <div id="starText" class="stars" aria-label="Star reward">☆ ☆ ☆</div>
-      <button id="digModeBtn" class="mode-btn" aria-label="Toggle digging mode">Dig mode: Continuous</button>
-    </section>
 
     <section id="stageWrap" class="stage-wrap">
       <section id="stage" class="stage" aria-label="Physics game area"></section>
@@ -211,7 +205,6 @@ app.innerHTML = `
         <img id="endImage" class="end-image" alt="Result image" />
 
         <p id="endMessage">You reached the goal.</p>
-        <div id="endStars" class="end-stars">☆ ☆ ☆</div>
         <div class="end-actions">
           <button id="retryBtn">Retry level</button>
           <button id="modalNextBtn">Next level</button>
@@ -234,13 +227,9 @@ const nextBtn = document.querySelector('#nextBtn')
 const digModeBtn = document.querySelector('#digModeBtn')
 const stageWrapEl = document.querySelector('#stageWrap')
 const stageEl = document.querySelector('#stage')
-const statusTextEl = document.querySelector('#statusText')
-const opFeedbackEl = document.querySelector('#opFeedback')
-const starTextEl = document.querySelector('#starText')
 const endModalEl = document.querySelector('#endModal')
 const endTitleEl = document.querySelector('#endTitle')
 const endMessageEl = document.querySelector('#endMessage')
-const endStarsEl = document.querySelector('#endStars')
 const retryBtn = document.querySelector('#retryBtn')
 const modalNextBtn = document.querySelector('#modalNextBtn')
 const endImageEl = document.querySelector('#endImage')
@@ -391,19 +380,15 @@ function rebuildSolidMask(level) {
 }
 
 function setStatus(text) {
-  statusTextEl.textContent = text
+  return text
 }
 
 function setFeedback(text) {
-  opFeedbackEl.textContent = text
+  return text
 }
 
 function setStars(starCount) {
-  const stars = ['☆', '☆', '☆']
-  for (let index = 0; index < starCount; index += 1) {
-    stars[index] = '★'
-  }
-  starTextEl.textContent = stars.join(' ')
+  return starCount
 }
 
 function showEndModal(title, message, stars, showNext, imageSrc) {
@@ -414,7 +399,6 @@ function showEndModal(title, message, stars, showNext, imageSrc) {
 
   endTitleEl.textContent = title
   endMessageEl.textContent = message
-  endStarsEl.textContent = view.join(' ')
   modalNextBtn.disabled = !showNext
   endModalEl.classList.remove('hidden')
   endImageEl.src = imageSrc
@@ -516,7 +500,7 @@ function spawnEquationFeedback(pocket, before, delta, after) {
     y: pocket.y - pocket.radius - 12,
     driftX: (Math.random() - 0.5) * 0.4,
     life: 0,
-    maxLife: 90,
+    maxLife: 240,
     text: `${before} ${operator} ${magnitude} = ${after}`,
     color: delta >= 0 ? '#ff9b37' : '#ff6b57',
   })
@@ -1330,15 +1314,17 @@ function drawPipeTargetBadge(level) {
 }
 
 function drawStartPrompt(level) {
-  const elapsed = performance.now() - state.introOverlayStartedAt
-  if (state.introOverlayDismissed || elapsed > 1800) {
+  if (state.introOverlayDismissed) {
     return
   }
 
-  const alpha = Math.max(0, 1 - elapsed / 1800)
-  const message = `Make the water equal ${level.targetValue}`
+  const pulse = 0.5 + Math.sin(performance.now() * 0.01) * 0.5
+  const digStartX = level.source.x + 34
+  const digStartY = level.source.y + level.source.radius + 42
+  const labelX = digStartX - 56
+  const labelY = digStartY - 66
+
   ctx.save()
-  ctx.globalAlpha = alpha
   ctx.fillStyle = 'rgba(7, 48, 70, 0.72)'
   roundRectPath(WIDTH / 2 - 180, 24, 360, 54, 18)
   ctx.fill()
@@ -1347,8 +1333,42 @@ function drawStartPrompt(level) {
   ctx.stroke()
   ctx.fillStyle = '#ffffff'
   ctx.font = '900 24px "Trebuchet MS", Arial, sans-serif'
+  const message = `Make the water equal ${level.targetValue}`
   const textWidth = ctx.measureText(message).width
   ctx.fillText(message, WIDTH / 2 - textWidth / 2, 58)
+
+  ctx.fillStyle = 'rgba(7, 48, 70, 0.82)'
+  roundRectPath(labelX - 10, labelY - 24, 148, 34, 12)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(255, 248, 226, 0.98)'
+  ctx.font = '800 17px "Trebuchet MS", Arial, sans-serif'
+  ctx.fillText('Start digging here', labelX, labelY)
+
+  ctx.strokeStyle = `rgba(255, 196, 72, ${0.6 + pulse * 0.25})`
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(labelX + 94, labelY + 8)
+  ctx.lineTo(digStartX + 10, digStartY - 18)
+  ctx.stroke()
+
+  ctx.fillStyle = `rgba(255, 196, 72, ${0.8 + pulse * 0.15})`
+  ctx.beginPath()
+  ctx.moveTo(digStartX + 2, digStartY - 2)
+  ctx.lineTo(digStartX + 30, digStartY - 12)
+  ctx.lineTo(digStartX + 12, digStartY - 30)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.lineWidth = 4
+  ctx.strokeStyle = `rgba(255, 231, 163, ${0.5 + pulse * 0.35})`
+  ctx.beginPath()
+  ctx.arc(digStartX + 4, digStartY + 4, 18 + pulse * 8, 0, Math.PI * 2)
+  ctx.stroke()
+
   ctx.restore()
 }
 
@@ -1434,6 +1454,8 @@ function digAt(worldX, worldY, radius) {
   if (state.hasResolvedRound) {
     return
   }
+
+  dismissIntroOverlay()
 
   terrainCtx.globalCompositeOperation = 'destination-out'
   terrainCtx.beginPath()
@@ -1709,3 +1731,6 @@ modalNextBtn.addEventListener('click', () => {
   const nextIndex = (state.currentLevelIndex + 1) % levels.length
   loadLevel(nextIndex)
 })
+
+
+
