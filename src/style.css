@@ -17,43 +17,48 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(circle at top, #f4fbff, #c9edff 42%, #b6e2fb 100%);
+  overflow: hidden;
 }
 
 #app {
   width: 100%;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
-  padding: 18px;
+  padding: 12px;
 }
 
 .app-shell {
   width: min(980px, 100%);
+  min-height: calc(100dvh - 24px);
   display: grid;
-  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   background: #ffffffcc;
   border: 2px solid #9ed6f7;
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   box-shadow: 0 8px 20px #90cced69;
+  gap: 12px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 2rem;
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
   color: #0d4d74;
 }
 
 .topbar p {
   margin: 4px 0 0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: #2d5974;
 }
 
@@ -98,37 +103,9 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
-.hud {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.hud div {
-  background: #ffffffd8;
-  border: 2px solid #9ed6f7;
-  border-radius: 10px;
-  text-align: center;
-  padding: 8px 6px;
-}
-
-.hud strong {
-  display: block;
-  font-size: 0.78rem;
-  color: #2e5f7f;
-}
-
-.hud span {
-  display: block;
-  margin-top: 2px;
-  font-size: 1.36rem;
-  font-weight: 800;
-  color: #0e4f76;
-}
-
 .status-row {
   display: grid;
-  grid-template-columns: 1.8fr 1.6fr auto auto;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.2fr) auto auto;
   align-items: center;
   gap: 8px;
 }
@@ -159,15 +136,22 @@ select:focus-visible {
   font-weight: 900;
 }
 
+.stage-wrap {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+
 .stage {
   border-radius: 16px;
   border: 3px solid #85c4e7;
   overflow: hidden;
   box-shadow: 0 10px 22px #7abce051;
-  width: 100%;
-  max-width: 940px;
+  width: min(100%, 940px);
+  height: auto;
   aspect-ratio: 940 / 620;
   margin: 0 auto;
+  background: #9ed8f4;
 }
 
 .stage canvas {
@@ -185,11 +169,11 @@ select:focus-visible {
   background: #ffffffcc;
   border: 2px solid #9ed6f7;
   border-radius: 12px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  font-size: 0.95rem;
+  gap: 12px;
+  font-size: 0.88rem;
 }
 
 .end-modal {
@@ -241,14 +225,34 @@ select:focus-visible {
 }
 
 @media (max-width: 930px) {
+  #app {
+    padding: 8px;
+  }
+
+  .app-shell {
+    min-height: calc(100dvh - 16px);
+    gap: 8px;
+  }
+
   .topbar,
   .status-row {
     grid-template-columns: 1fr;
     display: grid;
+    align-items: stretch;
   }
 
-  .hud {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .topbar-actions {
+    gap: 8px;
+  }
+
+  .status-chip,
+  .mode-btn {
+    min-height: 40px;
+  }
+
+  .legend {
+    gap: 8px;
+    font-size: 0.8rem;
   }
 }
 
