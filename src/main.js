@@ -183,20 +183,25 @@ const levels = []
 const app = document.querySelector('#app')
 app.innerHTML = `
   <main class="app-shell">
-    <header class="topbar" aria-label="Game controls and score">
+    <header class="topbar" aria-label="Game controls">
       <div>
         <h1>Crab Current Math</h1>
-        <p>Dig tunnels. Combine pockets to hit the exact target before reaching the pipe.</p>
+        <p>Guide the water to the pipe and make it equal the target.</p>
       </div>
       <div class="topbar-actions">
         <label>
           Level
           <select id="levelSelect" aria-label="Select level"></select>
         </label>
+        <button id="digModeBtn" class="mode-btn" aria-label="Toggle digging mode">Dig mode: Continuous</button>
         <button id="restartBtn">Restart level</button>
         <button id="nextBtn">Next level</button>
       </div>
     </header>
+
+    <section id="stageWrap" class="stage-wrap">
+      <section id="stage" class="stage" aria-label="Physics game area"></section>
+    </section>
 
     <section class="status-row">
       <div id="statusText" class="status-chip">Carve a path from source to goal.</div>
@@ -214,7 +219,6 @@ app.innerHTML = `
         <img id="endImage" class="end-image" alt="Result image" />
 
         <p id="endMessage">You reached the goal.</p>
-        <div id="endStars" class="end-stars">☆ ☆ ☆</div>
         <div class="end-actions">
           <button id="retryBtn">Retry level</button>
           <button id="modalNextBtn">Next level</button>
@@ -235,16 +239,11 @@ const levelSelect = document.querySelector('#levelSelect')
 const restartBtn = document.querySelector('#restartBtn')
 const nextBtn = document.querySelector('#nextBtn')
 const digModeBtn = document.querySelector('#digModeBtn')
+const stageWrapEl = document.querySelector('#stageWrap')
 const stageEl = document.querySelector('#stage')
-const currentValueEl = document.querySelector('#currentValue')
-const targetValueEl = document.querySelector('#targetValue')
-const statusTextEl = document.querySelector('#statusText')
-const opFeedbackEl = document.querySelector('#opFeedback')
-const starTextEl = document.querySelector('#starText')
 const endModalEl = document.querySelector('#endModal')
 const endTitleEl = document.querySelector('#endTitle')
 const endMessageEl = document.querySelector('#endMessage')
-const endStarsEl = document.querySelector('#endStars')
 const retryBtn = document.querySelector('#retryBtn')
 const modalNextBtn = document.querySelector('#modalNextBtn')
 const endImageEl = document.querySelector('#endImage')
@@ -304,9 +303,14 @@ const state = {
   displayCurrentValue: 0, // smoothed current value for in-game bubble
   resultMessage: '',
   resultColor: '#007e7a',
+  introOverlayStartedAt: performance.now(),
+  introOverlayDismissed: false,
+  hasInteracted: false,
+  hoveredPocketId: null,
 }
 
 const evaporationParticles = []
+const floatingEquations = []
 
 const fireSprite = new Image()
 fireSprite.src = '/fire.png'
@@ -490,11 +494,11 @@ function rebuildSolidMask(level) {
 }
 
 function setStatus(text) {
-  statusTextEl.textContent = text
+  return text
 }
 
 function setFeedback(text) {
-  opFeedbackEl.textContent = text
+  return text
 }
 
 function setStars(starCount) {
@@ -515,7 +519,6 @@ function showEndModal(title, message, stars, showNext, imageSrc) {
 
   endTitleEl.textContent = title
   endMessageEl.textContent = message
-  endStarsEl.textContent = view.join(' ')
   modalNextBtn.disabled = !showNext
   endModalEl.classList.remove('hidden')
   endImageEl.src = imageSrc
@@ -584,6 +587,7 @@ function resolveRound(reason) {
 function handlePocketActivation(pocket) {
   if (state.activeOperations.has(pocket.id)) return
 
+  const previousValue = state.currentValue
   state.activeOperations.add(pocket.id)
 
   // FIRE POCKET
@@ -599,6 +603,7 @@ function handlePocketActivation(pocket) {
 
   const prefix = pocket.delta > 0 ? '+' : ''
   setFeedback(`Applied ${prefix}${pocket.delta}. Current value is now ${state.currentValue}.`)
+  spawnEquationFeedback(pocket, previousValue, pocket.delta, state.currentValue)
 }
 
 function spawnEvaporation(x, y) {
@@ -611,6 +616,20 @@ function spawnEvaporation(x, y) {
       life: 40 + Math.random() * 20,
     })
   }
+}
+
+function spawnEquationFeedback(pocket, before, delta, after) {
+  const operator = delta >= 0 ? '+' : '-'
+  const magnitude = Math.abs(delta)
+  floatingEquations.push({
+    x: pocket.x,
+    y: pocket.y - pocket.radius - 12,
+    driftX: (Math.random() - 0.5) * 0.4,
+    life: 0,
+    maxLife: 240,
+    text: `${before} ${operator} ${magnitude} = ${after}`,
+    color: delta >= 0 ? '#ff9b37' : '#ff6b57',
+  })
 }
 
 function seedInitialPool(level) {
@@ -1192,6 +1211,16 @@ function drawTerrain(level) {
   level.pockets.forEach((pocket) => {
     const active = state.activeOperations.has(pocket.id)
     const isMinus = pocket.delta < 0
+    const hovered = state.hoveredPocketId === pocket.id
+    const pulse = 0.5 + Math.sin(performance.now() * 0.007 + pocket.x * 0.01) * 0.5
+    const glowRadius = pocket.radius + (hovered ? 18 : 10) + pulse * 6
+
+    ctx.beginPath()
+    ctx.arc(pocket.x, pocket.y, glowRadius, 0, Math.PI * 2)
+    ctx.fillStyle = isMinus
+      ? `rgba(255, 129, 51, ${hovered ? 0.3 : 0.18})`
+      : `rgba(68, 182, 255, ${hovered ? 0.28 : 0.18})`
+    ctx.fill()
 
     ctx.beginPath()
     ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2)
@@ -1272,6 +1301,9 @@ function drawOverlay() {
   const level = levels[state.currentLevelIndex]
   ctx.save()
 
+  drawSourceValueBadge(level)
+  drawPipeTargetBadge(level)
+  drawStartPrompt(level)
   // Source (current value) bubble
   const currentBubbleRadius = level.source.radius - 8
   ctx.beginPath()
@@ -1341,9 +1373,22 @@ function drawOverlay() {
 
     ctx.fill()
 
+    const hovered = state.hoveredPocketId === pocket.id
+    const bounce = hovered ? Math.sin(performance.now() * 0.014) * 4 : 0
+
     ctx.font = '900 28px "Trebuchet MS", Arial, sans-serif'
-    ctx.fillStyle = pocket.delta < 0 ? (pocket.fireState == 'burning' ? '#7a3700ff' : '#ff7300ff') : '#003f70ff'
+    ctx.fillStyle = pocket.delta < 0 ? (pocket.fireState == 'burning' ? '#aa4300' : '#ff7300') : '#0c6fb5'
     const text = pocket.delta > 0 ? `+${pocket.delta}` : `${pocket.delta}`
+    const labelWidth = ctx.measureText(text).width
+    ctx.fillText(text, pocket.x - labelWidth / 2, pocket.y + 10 + bounce)
+  })
+
+  const crabOffset = 64
+  const crabY = state.crabState === 'sad' ? level.goal.y + 32 : level.goal.y + 32
+  const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀🌊'
+  ctx.font = '3vw Arial'
+  ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
+
     ctx.fillText(text, pocket.x, pocket.y + 10)
   })
 
@@ -1378,13 +1423,211 @@ function drawOverlay() {
   ctx.lineTo(bottleX + bottleW * 0.9, targetY)
   ctx.stroke()
 
+  drawFloatingEquations()
   ctx.restore()
+}
+
+function drawSourceValueBadge(level) {
+  const anchor = getWaterLabelPosition(level)
+  const currentText = `${Math.round(state.currentValue)}`
+  const sublabel = 'Current'
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(0, 93, 158, 0.24)'
+  ctx.shadowBlur = 18
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.96)'
+  roundRectPath(anchor.x - 34, anchor.y - 30, 68, 54, 18)
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.lineWidth = 3
+  ctx.strokeStyle = '#2796da'
+  ctx.stroke()
+
+  ctx.fillStyle = '#1e6fa8'
+  ctx.font = '700 13px "Trebuchet MS", Arial, sans-serif'
+  const subWidth = ctx.measureText(sublabel).width
+  ctx.fillText(sublabel, anchor.x - subWidth / 2, anchor.y - 10)
+
+  ctx.fillStyle = '#0e5d95'
+  ctx.font = '900 26px "Trebuchet MS", Arial, sans-serif'
+  const textWidth = ctx.measureText(currentText).width
+  ctx.fillText(currentText, anchor.x - textWidth / 2, anchor.y + 16)
+  ctx.restore()
+}
+
+function drawPipeTargetBadge(level) {
+  const label = `Target: ${level.targetValue}`
+  const x = level.goal.x - 70
+  const y = level.goal.y - level.goal.radius - 78
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(15, 110, 52, 0.22)'
+  ctx.shadowBlur = 16
+  ctx.fillStyle = 'rgba(245, 255, 246, 0.95)'
+  roundRectPath(x, y, 140, 42, 14)
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.lineWidth = 3
+  ctx.strokeStyle = '#2aa862'
+  ctx.stroke()
+
+  ctx.fillStyle = '#1f7a47'
+  ctx.font = '900 20px "Trebuchet MS", Arial, sans-serif'
+  const textWidth = ctx.measureText(label).width
+  ctx.fillText(label, x + 70 - textWidth / 2, y + 27)
+
+  ctx.strokeStyle = '#2aa862'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(x + 70, y + 42)
+  ctx.lineTo(level.goal.x, level.goal.y - level.goal.radius - 10)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawStartPrompt(level) {
+  if (state.introOverlayDismissed) {
+    return
+  }
+
+  const pulse = 0.5 + Math.sin(performance.now() * 0.01) * 0.5
+  const digStartX = level.source.x + 34
+  const digStartY = level.source.y + level.source.radius + 42
+  const labelX = digStartX - 56
+  const labelY = digStartY - 66
+
+  ctx.save()
+  ctx.fillStyle = 'rgba(7, 48, 70, 0.72)'
+  roundRectPath(WIDTH / 2 - 180, 24, 360, 54, 18)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '900 24px "Trebuchet MS", Arial, sans-serif'
+  const message = `Make the water equal ${level.targetValue}`
+  const textWidth = ctx.measureText(message).width
+  ctx.fillText(message, WIDTH / 2 - textWidth / 2, 58)
+
+  ctx.fillStyle = 'rgba(7, 48, 70, 0.82)'
+  roundRectPath(labelX - 10, labelY - 24, 148, 34, 12)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(255, 248, 226, 0.98)'
+  ctx.font = '800 17px "Trebuchet MS", Arial, sans-serif'
+  ctx.fillText('Start digging here', labelX, labelY)
+
+  ctx.strokeStyle = `rgba(255, 196, 72, ${0.6 + pulse * 0.25})`
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(labelX + 94, labelY + 8)
+  ctx.lineTo(digStartX + 10, digStartY - 18)
+  ctx.stroke()
+
+  ctx.fillStyle = `rgba(255, 196, 72, ${0.8 + pulse * 0.15})`
+  ctx.beginPath()
+  ctx.moveTo(digStartX + 2, digStartY - 2)
+  ctx.lineTo(digStartX + 30, digStartY - 12)
+  ctx.lineTo(digStartX + 12, digStartY - 30)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.lineWidth = 4
+  ctx.strokeStyle = `rgba(255, 231, 163, ${0.5 + pulse * 0.35})`
+  ctx.beginPath()
+  ctx.arc(digStartX + 4, digStartY + 4, 18 + pulse * 8, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.restore()
+}
+
+function drawFloatingEquations() {
+  floatingEquations.forEach((entry) => {
+    const alpha = 1 - entry.life / entry.maxLife
+    const rise = entry.life * 0.55
+
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, alpha)
+    ctx.font = '800 18px "Trebuchet MS", Arial, sans-serif'
+    const width = Math.max(132, ctx.measureText(entry.text).width + 22)
+    ctx.fillStyle = 'rgba(255,255,255,0.96)'
+    roundRectPath(entry.x - width / 2, entry.y - rise - 24, width, 34, 14)
+    ctx.fill()
+    ctx.lineWidth = 2
+    ctx.strokeStyle = entry.color
+    ctx.stroke()
+    ctx.fillStyle = entry.color
+    ctx.fillText(entry.text, entry.x - ctx.measureText(entry.text).width / 2, entry.y - rise - 2)
+    ctx.restore()
+  })
+}
+
+function updateFloatingEquations() {
+  for (let i = floatingEquations.length - 1; i >= 0; i -= 1) {
+    const entry = floatingEquations[i]
+    entry.life += 1
+    entry.x += entry.driftX
+    if (entry.life >= entry.maxLife) {
+      floatingEquations.splice(i, 1)
+    }
+  }
+}
+
+function getWaterLabelPosition(level) {
+  let weightedX = 0
+  let weightedY = 0
+  let total = 0
+
+  for (let gy = 1; gy < GRID_H - 1; gy += 1) {
+    for (let gx = 1; gx < GRID_W - 1; gx += 1) {
+      const amount = state.waterGrid[idxOf(gx, gy)]
+      if (amount < 0.24) {
+        continue
+      }
+
+      const x = gx * FLUID_CELL + FLUID_CELL * 0.5
+      const y = gy * FLUID_CELL + FLUID_CELL * 0.5
+      weightedX += x * amount
+      weightedY += y * amount
+      total += amount
+    }
+  }
+
+  if (total < 1) {
+    return { x: level.source.x, y: level.source.y + 6 }
+  }
+
+  return {
+    x: weightedX / total,
+    y: weightedY / total,
+  }
+}
+
+function roundRectPath(x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + width, y, x + width, y + height, r)
+  ctx.arcTo(x + width, y + height, x, y + height, r)
+  ctx.arcTo(x, y + height, x, y, r)
+  ctx.arcTo(x, y, x + width, y, r)
+  ctx.closePath()
+}
+
+function dismissIntroOverlay() {
+  state.introOverlayDismissed = true
+  state.hasInteracted = true
 }
 
 function digAt(worldX, worldY, radius) {
   if (state.hasResolvedRound) {
     return
   }
+
+  dismissIntroOverlay()
 
   terrainCtx.globalCompositeOperation = 'destination-out'
   terrainCtx.beginPath()
@@ -1406,10 +1649,13 @@ function setupDigHandlers() {
     return {
       x: (event.clientX - rect.left) * scaleX,
       y: (event.clientY - rect.top) * scaleY,
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
     }
   }
 
   canvas.addEventListener('pointerdown', (event) => {
+    dismissIntroOverlay()
     state.mouseDown = true
     const { x, y } = pointerToWorld(event)
     if (state.digMode !== 'continuous') {
@@ -1422,12 +1668,21 @@ function setupDigHandlers() {
   })
 
   canvas.addEventListener('pointermove', (event) => {
+    const { x, y } = pointerToWorld(event)
+    const level = levels[state.currentLevelIndex]
+    const hoveredPocket = level.pockets.find((pocket) => circleContains(x, y, pocket))
+    state.hoveredPocketId = hoveredPocket ? hoveredPocket.id : null
+
     if (!state.mouseDown || state.digMode !== 'continuous') {
       return
     }
 
-    const { x, y } = pointerToWorld(event)
+    dismissIntroOverlay()
     digAt(x, y, 21)
+  })
+
+  canvas.addEventListener('pointerleave', () => {
+    state.hoveredPocketId = null
   })
 }
 
@@ -1454,6 +1709,11 @@ function loadLevel(levelIndex) {
   state.bottleFillTarget = 0
   state.resultMessage = ''
   state.resultColor = '#007e7a'
+  state.hoveredPocketId = null
+  state.hasInteracted = false
+  state.introOverlayDismissed = false
+  state.introOverlayStartedAt = performance.now()
+  floatingEquations.length = 0
 
   for (const pocket of level.pockets) {
 
@@ -1513,10 +1773,9 @@ function loadLevel(levelIndex) {
   clearTerrainMask(level)
   seedInitialPool(level)
   seedPositivePockets(level)
-  updateHUD()
 
   setStatus('Finite pool loaded. Dig a route before your water runs out.')
-  setFeedback('Water now behaves like a side-flowing cell fluid.')
+  setFeedback(`Reach ${level.targetValue}. Modifier bubbles change your current value.`)
 }
 
 function updateFluidAndResolve() {
@@ -1574,7 +1833,7 @@ function tick(now) {
 
   updateFluidAndResolve()
   updateEvaporation()
-  updateHUD()
+  updateFloatingEquations()
   updateFire(levels[state.currentLevelIndex])
 
   // smooth animation toward target
@@ -1596,9 +1855,21 @@ function tick(now) {
   state.frameHandle = requestAnimationFrame(tick)
 }
 
+function syncStageSize() {
+  const viewportHeight = window.innerHeight
+  const wrapRect = stageWrapEl.getBoundingClientRect()
+  const availableHeight = Math.max(260, viewportHeight - wrapRect.top - 16)
+  const aspect = WIDTH / HEIGHT
+  const availableWidth = Math.max(280, stageWrapEl.clientWidth)
+  const stageWidth = Math.min(availableWidth, availableHeight * aspect)
+  stageEl.style.width = `${stageWidth}px`
+  stageEl.style.height = `${stageWidth / aspect}px`
+}
+
 setupDigHandlers()
 syncWorldGeometry()
 loadLevel(0)
+syncStageSize()
 state.frameHandle = requestAnimationFrame(tick)
 
 let resizeTimer = null
@@ -1612,6 +1883,8 @@ window.addEventListener('resize', () => {
     loadLevel(state.currentLevelIndex)
   }, 120)
 })
+
+window.addEventListener('resize', syncStageSize)
 
 levelSelect.addEventListener('change', (event) => {
   const nextIndex = Number(event.target.value)
@@ -1650,3 +1923,6 @@ modalNextBtn.addEventListener('click', () => {
   const nextIndex = (state.currentLevelIndex + 1) % levels.length
   loadLevel(nextIndex)
 })
+
+
+
