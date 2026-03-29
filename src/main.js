@@ -1381,16 +1381,15 @@ function drawOverlay() {
     const text = pocket.delta > 0 ? `+${pocket.delta}` : `${pocket.delta}`
     const labelWidth = ctx.measureText(text).width
     ctx.fillText(text, pocket.x - labelWidth / 2, pocket.y + 10 + bounce)
-  })
 
-  const crabOffset = 64
-  const crabY = state.crabState === 'sad' ? level.goal.y + 32 : level.goal.y + 32
-  const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀🌊'
-  ctx.font = '3vw Arial'
-  ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
+    const crabOffset = 64
+    const crabY = state.crabState === 'sad' ? level.goal.y + 32 : level.goal.y + 32
+    const crabFace = state.crabState === 'happy' ? '🦀🙂' : state.crabState === 'sad' ? '🦀☹️' : '🦀🌊'
+    ctx.font = '3vw Arial'
+    ctx.fillText(state.crabState === 'neutral' ? '🦀' : crabFace, level.goal.x - 24 + crabOffset, crabY)
 
-    ctx.fillText(text, pocket.x, pocket.y + 10)
-  })
+      ctx.fillText(text, pocket.x, pocket.y + 10)
+    })
 
   // Bottle fill indicator and level target line
   const bottleW = level.goal.radius * 1.6
