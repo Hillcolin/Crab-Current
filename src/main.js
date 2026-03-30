@@ -214,7 +214,7 @@ app.innerHTML = `
 
     <footer class="legend">
       <span><b>Blue pockets</b> add water value.</span>
-      <span><b>Sponges</b> subtract water value.</span>
+      <span><b>Fire</b> subtracts water value.</span>
       <span><b>Gray rocks</b> cannot be dug through.</span>
       <span><b>Goal pipe</b> needs exact value and safe flow.</span>
     </footer>
