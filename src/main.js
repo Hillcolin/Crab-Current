@@ -17,6 +17,22 @@ const FIRE_TOTAL_FRAMES = 8
 
 const levels = [
   {
+    id: 0,
+    name: 'Level 0 · Tutorial',
+    theme: 'surface',
+    startValue: 1,
+    targetValue: 3,
+    pipeCapacity: 20,
+    poolAmount: 180,
+    source: { x: 116, y: 80, radius: 44 },
+    goal: { x: 820, y: 530, radius: 46 },
+    pockets: [
+      { id: 'a', x: 320, y: 250, radius: 42, delta: 2, label: '+2 pocket' },
+    ],
+    rocks: [],
+    tutorial: true,
+  },
+  {
     id: 1,
     name: 'Level 1 · Learn the combo',
     theme: 'surface',
@@ -1323,51 +1339,92 @@ function drawStartPrompt(level) {
   const digStartY = level.source.y + level.source.radius + 42
   const labelX = digStartX - 56
   const labelY = digStartY - 66
+  const isTutorial = Boolean(level.tutorial)
 
   ctx.save()
-  ctx.fillStyle = 'rgba(7, 48, 70, 0.72)'
-  roundRectPath(WIDTH / 2 - 180, 24, 360, 54, 18)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)'
-  ctx.lineWidth = 2
-  ctx.stroke()
-  ctx.fillStyle = '#ffffff'
-  ctx.font = '900 24px "Trebuchet MS", Arial, sans-serif'
-  const message = `Make the water equal ${level.targetValue}`
-  const textWidth = ctx.measureText(message).width
-  ctx.fillText(message, WIDTH / 2 - textWidth / 2, 58)
 
-  ctx.fillStyle = 'rgba(7, 48, 70, 0.82)'
-  roundRectPath(labelX - 10, labelY - 24, 148, 34, 12)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)'
-  ctx.lineWidth = 2
-  ctx.stroke()
+  if (isTutorial) {
+    ctx.fillStyle = 'rgba(7, 48, 70, 0.82)'
+    roundRectPath(WIDTH / 2 - 230, 18, 460, 138, 20)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)'
+    ctx.lineWidth = 2
+    ctx.stroke()
 
-  ctx.fillStyle = 'rgba(255, 248, 226, 0.98)'
-  ctx.font = '800 17px "Trebuchet MS", Arial, sans-serif'
-  ctx.fillText('Start digging here', labelX, labelY)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '900 24px "Trebuchet MS", Arial, sans-serif'
+    const title = 'Welcome to the tutorial'
+    const titleWidth = ctx.measureText(title).width
+    ctx.fillText(title, WIDTH / 2 - titleWidth / 2, 50)
 
-  ctx.strokeStyle = `rgba(255, 196, 72, ${0.6 + pulse * 0.25})`
-  ctx.lineWidth = 5
-  ctx.beginPath()
-  ctx.moveTo(labelX + 94, labelY + 8)
-  ctx.lineTo(digStartX + 10, digStartY - 18)
-  ctx.stroke()
+    ctx.font = '700 16px "Trebuchet MS", Arial, sans-serif'
+    const lines = [
+      'Drag or hold to carve a tunnel from the source to the pipe.',
+      'Click to dig a single chunk instead of dragging.',
+      'Reach the goal with exactly the target value: 3.',
+      'Use the blue bubble nearby to add +2 to the water value.',
+    ]
 
-  ctx.fillStyle = `rgba(255, 196, 72, ${0.8 + pulse * 0.15})`
-  ctx.beginPath()
-  ctx.moveTo(digStartX + 2, digStartY - 2)
-  ctx.lineTo(digStartX + 30, digStartY - 12)
-  ctx.lineTo(digStartX + 12, digStartY - 30)
-  ctx.closePath()
-  ctx.fill()
+    lines.forEach((line, index) => {
+      ctx.fillText(line, WIDTH / 2 - 208, 78 + index * 22)
+    })
 
-  ctx.lineWidth = 4
-  ctx.strokeStyle = `rgba(255, 231, 163, ${0.5 + pulse * 0.35})`
-  ctx.beginPath()
-  ctx.arc(digStartX + 4, digStartY + 4, 18 + pulse * 8, 0, Math.PI * 2)
-  ctx.stroke()
+    ctx.strokeStyle = 'rgba(74, 204, 255, 0.85)'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.arc(level.pockets[0].x, level.pockets[0].y, level.pockets[0].radius + 12, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '800 15px "Trebuchet MS", Arial, sans-serif'
+    const pocketHint = 'Tap this bubble to add +2'
+    const pocketHintWidth = ctx.measureText(pocketHint).width
+    ctx.fillText(pocketHint, level.pockets[0].x - pocketHintWidth / 2, level.pockets[0].y - level.pockets[0].radius - 18)
+  } else {
+    ctx.fillStyle = 'rgba(7, 48, 70, 0.72)'
+    roundRectPath(WIDTH / 2 - 180, 24, 360, 54, 18)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '900 24px "Trebuchet MS", Arial, sans-serif'
+    const message = `Make the water equal ${level.targetValue}`
+    const textWidth = ctx.measureText(message).width
+    ctx.fillText(message, WIDTH / 2 - textWidth / 2, 58)
+
+    ctx.fillStyle = 'rgba(7, 48, 70, 0.82)'
+    roundRectPath(labelX - 10, labelY - 24, 148, 34, 12)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    ctx.fillStyle = 'rgba(255, 248, 226, 0.98)'
+    ctx.font = '800 17px "Trebuchet MS", Arial, sans-serif'
+    ctx.fillText('Start digging here', labelX, labelY)
+
+    ctx.strokeStyle = `rgba(255, 196, 72, ${0.6 + pulse * 0.25})`
+    ctx.lineWidth = 5
+    ctx.beginPath()
+    ctx.moveTo(labelX + 94, labelY + 8)
+    ctx.lineTo(digStartX + 10, digStartY - 18)
+    ctx.stroke()
+
+    ctx.fillStyle = `rgba(255, 196, 72, ${0.8 + pulse * 0.15})`
+    ctx.beginPath()
+    ctx.moveTo(digStartX + 2, digStartY - 2)
+    ctx.lineTo(digStartX + 30, digStartY - 12)
+    ctx.lineTo(digStartX + 12, digStartY - 30)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.lineWidth = 4
+    ctx.strokeStyle = `rgba(255, 231, 163, ${0.5 + pulse * 0.35})`
+    ctx.beginPath()
+    ctx.arc(digStartX + 4, digStartY + 4, 18 + pulse * 8, 0, Math.PI * 2)
+    ctx.stroke()
+  }
 
   ctx.restore()
 }

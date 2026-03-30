@@ -53,6 +53,7 @@ Water now uses a grid-based cellular flow model (gravity + sideways spread + dia
 
 ## Level progression
 
+- **Level 0**: tutorial introduction to digging and bubbles
 - **Level 1**: intro combo route (+ and -)
 - **Level 2**: branch balancing with multiple subtractors
 - **Level 3**: multi-step operation planning
